@@ -4,6 +4,10 @@ import UserAccounts from './pages/users/UserAccount'
 
 import Admin from './pages/admin/admin'
 import Products from './pages/admin/products'
+import Employee from './pages/admin/EmployeeManagement/Employee'
+import AddEmployee from './pages/admin/EmployeeManagement/AddEmployee'
+import EditEmployee from './pages/admin/EmployeeManagement/EditEmployee'
+import EmployeeHome from './pages/employees/Employee'
 
 function App() {
   const path = window.location.pathname
@@ -22,6 +26,22 @@ function App() {
 
   if (path === '/admin/products') {
     return <Products />
+  }
+
+  if (path === '/admin/employees') {
+    return <Employee />
+  }
+
+  if (path === '/admin/employees/add') {
+    return <AddEmployee />
+  }
+
+  if (path === '/admin/employees/edit') {
+    return <EditEmployee />
+  }
+
+  if (path === '/employee') {
+    return <EmployeeHome />
   }
 
   return <Login />
