@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 
 function Login() {
@@ -14,7 +13,6 @@ function Login() {
     setError('')
     setLoading(true)
 
-    // Login
     const { data, error: loginError } =
       await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -27,7 +25,6 @@ function Login() {
       return
     }
 
-    // Get user's profile and role
     const { data: profile, error: profileError } =
       await supabase
         .from('profiles')
@@ -41,16 +38,13 @@ function Login() {
       return
     }
 
-    // Check role
     if (profile.role === 'admin') {
       window.location.href = '/admin'
     } else if (profile.role === 'employee') {
-      window.location.href = '/rider'
+      window.location.href = '/employee'
     } else {
       window.location.href = '/account'
     }
-
-    setLoading(false)
   }
 
   return (
@@ -61,12 +55,19 @@ function Login() {
 
       <form onSubmit={handleLogin}>
         <div>
-          <label>Email</label>
+          <label htmlFor="email">
+            Email
+          </label>
+
           <br />
+
           <input
+            id="email"
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) =>
+              setEmail(e.target.value)
+            }
             required
           />
         </div>
@@ -74,31 +75,43 @@ function Login() {
         <br />
 
         <div>
-          <label>Password</label>
+          <label htmlFor="password">
+            Password
+          </label>
+
           <br />
+
           <input
+            id="password"
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) =>
+              setPassword(e.target.value)
+            }
             required
           />
         </div>
 
         <br />
 
-        <button type="submit" disabled={loading}>
-          {loading ? 'Logging in...' : 'Login'}
+        <button
+          type="submit"
+          disabled={loading}
+        >
+          {loading
+            ? 'Logging in...'
+            : 'Login'}
         </button>
 
         {error && <p>{error}</p>}
       </form>
 
       <p>
-        Don't have an account? <Link to="/register">Register</Link>
+        Don't have an account?{' '}
+        <a href="/register">Register</a>
       </p>
     </div>
   )
 }
 
 export default Login
-
