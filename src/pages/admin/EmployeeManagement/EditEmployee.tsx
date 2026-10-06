@@ -1,175 +1,141 @@
 import { useEffect, useState } from 'react'
-
 import { supabase } from '../../../lib/supabase'
-
-type Department = 'Management' | 'Delivery'
 
 type Employee = {
   id: string
   first_name: string
   last_name: string
-  middle_initial: string | null
-  phone: string | null
-  address: string | null
-  role: string
-  department: Department | null
-}
-
-function capitalizeWords(value: string) {
-  return value
-    .toLowerCase()
-    .split(' ')
-    .map((word) => {
-      if (!word) return ''
-      return word.charAt(0).toUpperCase() + word.slice(1)
-    })
-    .join(' ')
+  middle_initial: string
+  phone: string
+  address: string
+  department: 'Management' | 'Delivery' | null
 }
 
 function EditEmployee() {
-  const [employee, setEmployee] =
-    useState<Employee | null>(null)
-
+  const [employee, setEmployee] = useState<Employee | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [redirect, setRedirect] = useState(false)
+
+  const employeeId = new URLSearchParams(
+    window.location.search,
+  ).get('id')
 
   useEffect(() => {
-    loadEmployee()
-  }, [])
-
-  const loadEmployee = async () => {
-    setLoading(true)
-    setError('')
-
-    const params = new URLSearchParams(
-      window.location.search,
-    )
-
-    const employeeId = params.get('id')
-
     if (!employeeId) {
-      setError('Employee ID was not provided.')
-      setLoading(false)
       return
     }
 
-    try {
+    let cancelled = false
+
+    const loadEmployee = async () => {
       const {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser()
 
       if (userError || !user) {
-        window.location.href = '/'
+        if (!cancelled) {
+          setRedirect(true)
+          setLoading(false)
+        }
+
         return
       }
 
-      const {
-        data: adminProfile,
-        error: adminError,
-      } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
+      const { data: adminProfile, error: adminError } =
+        await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
 
-      if (
-        adminError ||
-        adminProfile?.role !== 'admin'
-      ) {
-        window.location.href = '/'
+      if (adminError || adminProfile?.role !== 'admin') {
+        if (!cancelled) {
+          setRedirect(true)
+          setLoading(false)
+        }
+
         return
       }
 
-      const {
-        data,
-        error: employeeError,
-      } = await supabase
-        .from('profiles')
-        .select(
-          'id, first_name, last_name, middle_initial, phone, address, role, department',
-        )
-        .eq('id', employeeId)
-        .eq('role', 'employee')
-        .single()
+      const { data, error: employeeError } =
+        await supabase
+          .from('profiles')
+          .select(
+            'id, first_name, last_name, middle_initial, phone, address, department',
+          )
+          .eq('id', employeeId)
+          .eq('role', 'employee')
+          .single()
 
       if (employeeError || !data) {
-        setError('Employee could not be found.')
+        if (!cancelled) {
+          setError('Employee not found.')
+          setLoading(false)
+        }
+
         return
       }
 
-      setEmployee(data)
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Could not load employee.',
-      )
-    } finally {
-      setLoading(false)
+      if (!cancelled) {
+        setEmployee(data)
+        setLoading(false)
+      }
     }
+
+    void loadEmployee()
+
+    return () => {
+      cancelled = true
+    }
+  }, [employeeId])
+
+  useEffect(() => {
+    if (redirect) {
+      window.location.href = '/'
+    }
+  }, [redirect])
+
+  const capitalizeWords = (value: string) => {
+    return value
+      .toLowerCase()
+      .split(' ')
+      .map((word) => {
+        if (!word) {
+          return ''
+        }
+
+        return (
+          word.charAt(0).toUpperCase() +
+          word.slice(1)
+        )
+      })
+      .join(' ')
   }
 
   const handleChange = (
     field: keyof Employee,
     value: string,
   ) => {
-    if (!employee) return
-
-    let newValue = value
-
-    if (
-      field === 'first_name' ||
-      field === 'last_name'
-    ) {
-      newValue = capitalizeWords(value)
-    }
-
-    if (field === 'middle_initial') {
-      newValue = value.toUpperCase()
-    }
-
-    setEmployee({
-      ...employee,
-      [field]: newValue,
-    })
-
-    setError('')
-    setMessage('')
-  }
-
-  const handleDepartmentChange = (
-    value: Department,
-  ) => {
-    if (!employee) return
-
-    setEmployee({
-      ...employee,
-      department: value,
-    })
-
-    setError('')
-    setMessage('')
-  }
-
-  const handleSave = async () => {
-    if (!employee || saving) return
-
-    if (
-      !employee.first_name.trim() ||
-      !employee.last_name.trim()
-    ) {
-      setError(
-        'First name and last name are required.',
-      )
+    if (!employee) {
       return
     }
 
-    if (!employee.department) {
-      setError('Please select a department.')
+    setEmployee({
+      ...employee,
+      [field]: value,
+    })
+  }
+
+  const handleSubmit = async (
+    e: React.FormEvent<HTMLFormElement>,
+  ) => {
+    e.preventDefault()
+
+    if (!employee) {
       return
     }
 
@@ -177,90 +143,42 @@ function EditEmployee() {
     setError('')
     setMessage('')
 
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        first_name: capitalizeWords(
+          employee.first_name.trim(),
+        ),
+        last_name: capitalizeWords(
+          employee.last_name.trim(),
+        ),
+        middle_initial: employee.middle_initial
+          .trim()
+          .toUpperCase(),
+        phone: employee.phone.trim(),
+        address: employee.address.trim(),
+        department: employee.department,
+      })
+      .eq('id', employee.id)
+      .eq('role', 'employee')
 
-      if (userError || !user) {
-        setError(
-          'You must be logged in as an admin.',
-        )
-        return
-      }
+    setSaving(false)
 
-      const {
-        data: adminProfile,
-        error: adminError,
-      } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-
-      if (
-        adminError ||
-        adminProfile?.role !== 'admin'
-      ) {
-        setError(
-          'Only admins can edit employees.',
-        )
-        return
-      }
-
-      const {
-        error: updateError,
-      } = await supabase
-        .from('profiles')
-        .update({
-          first_name:
-            employee.first_name.trim(),
-
-          last_name:
-            employee.last_name.trim(),
-
-          middle_initial:
-            employee.middle_initial?.trim() || null,
-
-          phone:
-            employee.phone?.trim() || null,
-
-          address:
-            employee.address?.trim() || null,
-
-          department:
-            employee.department,
-        })
-        .eq('id', employee.id)
-        .eq('role', 'employee')
-
-      if (updateError) {
-        console.error(updateError)
-
-        setError(
-          'Could not update employee.',
-        )
-
-        return
-      }
-
-      setMessage(
-        'Employee updated successfully.',
-      )
-
-      setTimeout(() => {
-        window.location.href = '/admin/employees'
-      }, 1000)
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Could not update employee.',
-      )
-    } finally {
-      setSaving(false)
+    if (updateError) {
+      console.error(updateError)
+      setError('Could not update employee.')
+      return
     }
+
+    setMessage('Employee updated successfully.')
+
+    setTimeout(() => {
+      window.location.href = '/admin/employees'
+    }, 1000)
+  }
+
+  if (!employeeId) {
+    return <p>Employee ID is missing.</p>
   }
 
   if (loading) {
@@ -269,12 +187,156 @@ function EditEmployee() {
 
   if (!employee) {
     return (
-      <div>
-        <h1>Edit Employee</h1>
+      <p>{error || 'Employee not found.'}</p>
+    )
+  }
 
-        <p role="alert">
-          {error || 'Employee not found.'}
-        </p>
+  return (
+    <div>
+      <h1>Edit Employee</h1>
+
+      {error && <p>{error}</p>}
+
+      {message && <p>{message}</p>}
+
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="first_name">
+            First Name
+          </label>
+
+          <input
+            id="first_name"
+            type="text"
+            value={employee.first_name}
+            onChange={(e) =>
+              handleChange(
+                'first_name',
+                e.target.value,
+              )
+            }
+            required
+          />
+        </div>
+
+        <div>
+          <label htmlFor="last_name">
+            Last Name
+          </label>
+
+          <input
+            id="last_name"
+            type="text"
+            value={employee.last_name}
+            onChange={(e) =>
+              handleChange(
+                'last_name',
+                e.target.value,
+              )
+            }
+            required
+          />
+        </div>
+
+        <div>
+          <label htmlFor="middle_initial">
+            Middle Initial
+          </label>
+
+          <input
+            id="middle_initial"
+            type="text"
+            maxLength={1}
+            value={employee.middle_initial}
+            onChange={(e) =>
+              handleChange(
+                'middle_initial',
+                e.target.value,
+              )
+            }
+          />
+        </div>
+
+        <div>
+          <label htmlFor="phone">
+            Phone
+          </label>
+
+          <input
+            id="phone"
+            type="text"
+            value={employee.phone}
+            onChange={(e) =>
+              handleChange(
+                'phone',
+                e.target.value,
+              )
+            }
+            required
+          />
+        </div>
+
+        <div>
+          <label htmlFor="address">
+            Address
+          </label>
+
+          <input
+            id="address"
+            type="text"
+            value={employee.address}
+            onChange={(e) =>
+              handleChange(
+                'address',
+                e.target.value,
+              )
+            }
+            required
+          />
+        </div>
+
+        <div>
+          <label htmlFor="department">
+            Department
+          </label>
+
+          <select
+            id="department"
+            value={employee.department || ''}
+            onChange={(e) =>
+              handleChange(
+                'department',
+                e.target.value,
+              )
+            }
+            required
+          >
+            <option value="">
+              Select Department
+            </option>
+
+            <option value="Management">
+              Management
+            </option>
+
+            <option value="Delivery">
+              Delivery
+            </option>
+          </select>
+        </div>
+
+        <br />
+
+        <button
+          type="submit"
+          disabled={saving}
+        >
+          {saving
+            ? 'Saving...'
+            : 'Save Changes'}
+        </button>
+
+        {' '}
 
         <button
           type="button"
@@ -283,212 +345,9 @@ function EditEmployee() {
               '/admin/employees'
           }}
         >
-          Back to Employees
+          Cancel
         </button>
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      <h1>Edit Employee</h1>
-
-      <button
-        type="button"
-        onClick={() => {
-          window.location.href =
-            '/admin/employees'
-        }}
-      >
-        Back to Employees
-      </button>
-
-      <hr />
-
-      {error && (
-        <p role="alert">
-          {error}
-        </p>
-      )}
-
-      {message && (
-        <p role="status">
-          {message}
-        </p>
-      )}
-
-      <div>
-        <label htmlFor="firstName">
-          First Name
-        </label>
-
-        <br />
-
-        <input
-          id="firstName"
-          type="text"
-          value={employee.first_name}
-          onChange={(e) =>
-            handleChange(
-              'first_name',
-              e.target.value,
-            )
-          }
-          required
-        />
-      </div>
-
-      <br />
-
-      <div>
-        <label htmlFor="lastName">
-          Last Name
-        </label>
-
-        <br />
-
-        <input
-          id="lastName"
-          type="text"
-          value={employee.last_name}
-          onChange={(e) =>
-            handleChange(
-              'last_name',
-              e.target.value,
-            )
-          }
-          required
-        />
-      </div>
-
-      <br />
-
-      <div>
-        <label htmlFor="middleInitial">
-          Middle Initial
-        </label>
-
-        <br />
-
-        <input
-          id="middleInitial"
-          type="text"
-          value={
-            employee.middle_initial || ''
-          }
-          onChange={(e) =>
-            handleChange(
-              'middle_initial',
-              e.target.value,
-            )
-          }
-          maxLength={1}
-        />
-      </div>
-
-      <br />
-
-      <div>
-        <label htmlFor="phone">
-          Phone
-        </label>
-
-        <br />
-
-        <input
-          id="phone"
-          type="tel"
-          value={employee.phone || ''}
-          onChange={(e) =>
-            handleChange(
-              'phone',
-              e.target.value,
-            )
-          }
-        />
-      </div>
-
-      <br />
-
-      <div>
-        <label htmlFor="address">
-          Address
-        </label>
-
-        <br />
-
-        <input
-          id="address"
-          type="text"
-          value={employee.address || ''}
-          onChange={(e) =>
-            handleChange(
-              'address',
-              e.target.value,
-            )
-          }
-        />
-      </div>
-
-      <br />
-
-      <div>
-        <label htmlFor="department">
-          Department
-        </label>
-
-        <br />
-
-        <select
-          id="department"
-          value={
-            employee.department || ''
-          }
-          onChange={(e) =>
-            handleDepartmentChange(
-              e.target.value as Department,
-            )
-          }
-          required
-        >
-          <option value="">
-            Select Department
-          </option>
-
-          <option value="Management">
-            Management
-          </option>
-
-          <option value="Delivery">
-            Delivery
-          </option>
-        </select>
-      </div>
-
-      <br />
-
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={saving}
-      >
-        {saving
-          ? 'Saving...'
-          : 'Save Changes'}
-      </button>
-
-      {' '}
-
-      <button
-        type="button"
-        onClick={() => {
-          window.location.href =
-            '/admin/employees'
-        }}
-        disabled={saving}
-      >
-        Cancel
-      </button>
+      </form>
     </div>
   )
 }
